@@ -1,3 +1,4 @@
 RPi.GPIO
 ntplib
 adafruit-circuitpython-ds3231
+adafruit-circuitpython-fram

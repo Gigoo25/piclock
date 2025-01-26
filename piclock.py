@@ -6,6 +6,7 @@ import time
 from datetime import datetime
 
 import adafruit_ds3231
+import adafruit_fram
 import board
 import ntplib
 import RPi.GPIO as GPIO
@@ -37,6 +38,7 @@ GPIO.output(TICK_PIN2, GPIO.LOW)
 # Initialize I2C and RTC
 i2c = board.I2C()
 rtc = adafruit_ds3231.DS3231(i2c)
+fram = adafruit_fram.FRAM_I2C(i2c)
 
 
 def set_rtc_time(time_data):
@@ -54,6 +56,29 @@ def get_rtc_time():
         return rtc_time.tm_hour, rtc_time.tm_min, rtc_time.tm_sec
     except Exception as e:
         print(f"Failed to get RTC time: {e}")
+        return None
+
+
+def write_time_to_fram():
+    try:
+        # Format the clock time as a string (HH:MM:SS)
+        time_string = f"{CLOCK_HOUR_HAND_POSITION:02}:{CLOCK_MINUTE_HAND_POSITION:02}:{CLOCK_SECOND_HAND_POSITION:02}"
+        # Write the time string to FRAM at address 0
+        fram[0:8] = bytearray(time_string.encode("utf-8"))  # Store as bytes
+        print(f"Wrote clock time '{time_string}' to FRAM.")
+    except Exception as e:
+        print(f"Failed to write time to FRAM: {e}")
+
+
+def read_time_from_fram():
+    try:
+        # Read the time string from FRAM at address 0
+        time_bytes = fram[0:8]  # Read 8 bytes
+        time_string = time_bytes.decode("utf-8")  # Convert bytes back to string
+        print(f"Read time from FRAM at address 0: {time_string}")
+        return time_string
+    except Exception as e:
+        print(f"Failed to read time from FRAM: {e}")
         return None
 
 
@@ -175,7 +200,9 @@ def synchronize_clock():
     )
 
     if hour is not None:
-        tolerance = 1  # 1 second tolerance so we don't constantly fast forward or reverse
+        tolerance = (
+            1  # 1 second tolerance so we don't constantly fast forward or reverse
+        )
 
         if abs(total_seconds_diff) <= tolerance:
             print("Clock is in sync with RTC time")
@@ -199,7 +226,9 @@ def set_fast_forward(value):
 def timer_callback(tick_event):
     while True:
         if fast_forward:
-            time.sleep(0.25) # 4 times faster seems to be a safe value. Previous value was 0.1 and clocked seemed to be skipping seconds occasionally
+            time.sleep(
+                0.25
+            )  # 4 times faster seems to be a safe value. Previous value was 0.1 and clocked seemed to be skipping seconds occasionally
         else:
             time.sleep(1)
         with lock:
@@ -209,15 +238,26 @@ def timer_callback(tick_event):
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Run PiClock script")
     parser.add_argument(
-        "--hour", type=int, required=True, help="Current hour hand position (1-12)"
+        "--set-time",
+        action="store_true",
+        help="Override the current clock time with the provided hour, minute, and second.",
+    )
+    parser.add_argument("--hour", type=int, help="Current hour hand position (1-12)")
+    parser.add_argument(
+        "--minute", type=int, help="Current minute hand position (0-59)"
     )
     parser.add_argument(
-        "--minute", type=int, required=True, help="Current minute hand position (0-59)"
+        "--second", type=int, help="Current second hand position (0-59)"
     )
-    parser.add_argument(
-        "--second", type=int, required=True, help="Current second hand position (0-59)"
-    )
-    return parser.parse_args()
+    args = parser.parse_args()
+
+    if args.set_time:
+        if args.hour is None or args.minute is None or args.second is None:
+            parser.error(
+                "--hour, --minute, and --second are required when --set-time is specified"
+            )
+
+    return args
 
 
 def signal_handler(signum, frame):
@@ -244,6 +284,21 @@ def main():
     CLOCK_MINUTE_HAND_POSITION = args.minute
     CLOCK_SECOND_HAND_POSITION = args.second
 
+    if args.set_time:
+        # Use the provided hour, minute, and second to set the initial time
+        initial_time = datetime.now().replace(
+            hour=args.hour, minute=args.minute, second=args.second, microsecond=0
+        )
+        set_rtc_time(initial_time)
+    else:
+        # Read the initial time from FRAM
+        time_string = read_time_from_fram()
+        if time_string:
+            hour, minute, second = map(int, time_string.split(":"))
+            CLOCK_HOUR_HAND_POSITION = hour % 12 or 12
+            CLOCK_MINUTE_HAND_POSITION = minute
+            CLOCK_SECOND_HAND_POSITION = second
+
     sync_rtc_time_with_ntp_time(on_startup=True)
 
     # Start the timer in a separate thread
@@ -261,6 +316,7 @@ def main():
         with lock:  # Use the lock to ensure thread safety
             tick_event.clear()
             synchronize_clock()
+            write_time_to_fram()  # Save the time to FRAM every second
 
 
 if __name__ == "__main__":
