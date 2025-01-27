@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PiClock</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>PiClock</h1>
+        <div class="card">
+            <h3>Clock Details</h3>
+            <div class="details">
+                <p><strong>Clock Status:</strong> <span id="clock-status">Loading...</span></p>
+                <p><strong>Clock Time:</strong> <span id="clock-time">Loading...</span></p>
+                <p><strong>NTP Time:</strong> <span id="ntp-time">Loading...</span></p>
+                <p><strong>Time Difference:</strong> <span id="time-difference">Loading...</span></p>
+                <p><strong>NTP Offset:</strong> <span id="ntp-offset">Loading...</span></p>
+            </div>
+        </div>
+        <div class="card">
+            <h3>Clock Controls</h3>
+            <button onclick="pauseClock()">Pause Clock</button>
+            <button onclick="resumeClock()">Resume Clock</button>
+        </div>
+        <br>
+        <div class="page-link">
+            <a href="{{ url_for('config') }}">Go to Config</a>
+        </div>
+    </div>
+    <script src="{{ url_for('static', filename='scripts.js') }}"></script>
+</body>
+</html>
