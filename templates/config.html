@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PiClock - Config</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>PiClock Config</h1>
+        <div class="card">
+            <h3>Set Time</h3>
+            <form method="post">
+                <div class="form-group">
+                    <label for="current-hour">Hour:</label>
+                    <input type="number" id="current-hour" name="hour" min="1" max="12" value="{{ clock_hour }}" required>
+                </div>
+                <div class="form-group">
+                    <label for="current-minute">Minute:</label>
+                    <input type="number" id="current-minute" name="minute" min="0" max="59" value="{{ clock_minute }}" required>
+                </div>
+                <div class="form-group">
+                    <label for="current-second">Second:</label>
+                    <input type="number" id="current-second" name="second" min="0" max="59" value="{{ clock_second }}" required>
+                </div>
+                <button type="submit" name="set_time" class="button" onclick="alert('Time settings updated successfully!')">Set Time</button>
+            </form>
+        </div>
+        <div class="card">
+            <h3>NTP Config</h3>
+            <form method="post">
+                <div class="form-group">
+                    <label for="ntp-server">NTP Server:</label>
+                    <input type="text" id="ntp-server" name="ntp_server" value="{{ ntp_server }}">
+                </div>
+                <div class="form-group">
+                    <label for="ntp-port">NTP Sync Interval:</label>
+                    <input type="number" id="ntp-port" name="ntp_sync_interval" value="{{ ntp_sync_interval }}" min="1" required>
+                </div>
+                <button type="submit" name="set_ntp" class="button" onclick="alert('NTP settings updated successfully!')">Set NTP</button>
+            </form>
+        </div>
+        <div class="page-link">
+            <a href="{{ url_for('index') }}">Back to Home</a>
+        </div>
+    </div>
+</body>
+</html>
