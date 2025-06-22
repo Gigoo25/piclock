@@ -23,7 +23,7 @@ class FRAM:
     def read_time_from_fram(self) -> str | None:
         try:
             time_bytes = self.fram[0:8]
-            time_string = time_bytes.decode("utf-8")
+            time_string: str = time_bytes.decode("utf-8")
             logging.info(f"Read time from FRAM at address 0: {time_string}")
             return time_string
         except Exception as e:

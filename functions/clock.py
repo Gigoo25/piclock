@@ -4,7 +4,7 @@ import time
 import RPi.GPIO as GPIO
 
 
-class CLOCK:
+class Clock:
     def __init__(
         self,
         hour_hand_position: int,
@@ -54,7 +54,7 @@ class CLOCK:
 
     def synchronize_clock(
         self, rtc_hour: int, rtc_minute: int, rtc_second: int
-    ) -> None:
+    ) -> tuple[int, int, int]:
         total_seconds_diff: int = self.calculate_time_difference(
             rtc_hour, rtc_minute, rtc_second
         )
@@ -82,6 +82,12 @@ class CLOCK:
                 )
                 self.fast_forward = False
                 self.reverse_tick()
+
+        return (
+            self.hour_hand_position,
+            self.minute_hand_position,
+            self.second_hand_position,
+        )
 
     def calculate_time_difference(self, hour: int, minute: int, second: int) -> int:
         if self.hour_hand_position == 12:

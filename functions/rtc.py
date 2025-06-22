@@ -13,7 +13,7 @@ class RTC:
         except Exception as e:
             logging.error(f"Failed to set RTC time: {e}")
 
-    def get_rtc_time(self):
+    def get_rtc_time(self) -> tuple[int, int, int] | None:
         try:
             rtc_time = self.rtc.datetime
             return rtc_time.tm_hour, rtc_time.tm_min, rtc_time.tm_sec
