@@ -108,7 +108,7 @@ function initializeSettings() {
         .then(data => {
             if (!data.error) {
                 document.getElementById('ntp-server').value = data.ntp_server;
-                document.getElementById('ntp-port').value = data.ntp_port;
+                document.getElementById('ntp-port').value = data.ntp_sync_interval;
             }
         });
 }
