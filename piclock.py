@@ -39,32 +39,35 @@ class ClockController:
         self.norm_tick_ms = 31          # Length of forward tick pulse in msecs
         self.norm_tick_on_us = 60       # Duty cycle of forward tick pulse (out of 100us)
         
-        # Fast-forward parameters
-        self.fwd_tick_ms = 32           # Length of fast-forward tick pulse in msecs
-        self.fwd_tick_on_us = 60        # Duty cycle of fast-forward tick pulse
-        self.fwd_count_mask = 1         # 0 = 8 ticks/sec, 1 = 4 ticks/sec, 3 = 2 ticks/sec, 7 = 1 tick/sec
-        self.fwd_speedup = 4            # Speed multiplier for fast-forward
+        # Fast-forward parameters (optimized based on ESPClock4)
+        self.fwd_tick_ms = 31           # Length of fast-forward tick pulse in msecs (reduced from 32)
+        self.fwd_tick_on_us = 65        # Duty cycle of fast-forward tick pulse (increased from 60)
+        self.fwd_count_mask = 0         # 0 = 8 ticks/sec (increased from 1 = 4 ticks/sec)
+        self.fwd_speedup = 8            # Speed multiplier for fast-forward (increased from 4)
         
-        # Reverse parameters - Region A (seconds 35-55)
+        # Reverse parameters - Region A (seconds 35-55) - optimized based on ESPClock4
         self.rev_ticka_lo = 35          # REV_TICKA_LO <= second hand < REV_TICKA_HI
         self.rev_ticka_hi = 55
-        self.rev_ticka_t1_ms = 12       # Length of reverse tick short pulse in msecs (increased from 10)
-        self.rev_ticka_t2_ms = 10       # Length of delay before reverse tick long pulse in msecs (increased from 7)
-        self.rev_ticka_t3_ms = 30       # Length of reverse tick long pulse in msecs (increased from 28)
-        self.rev_ticka_on_us = 90       # Duty cycle of reverse tick pulse in usec (out of 100usec)
+        self.rev_ticka_t1_ms = 9        # Length of reverse tick short pulse in msecs (reduced from 12)
+        self.rev_ticka_t2_ms = 5        # Length of delay before reverse tick long pulse in msecs (reduced from 10)
+        self.rev_ticka_t3_ms = 23       # Length of reverse tick long pulse in msecs (reduced from 30)
+        self.rev_ticka_on_us = 85       # Duty cycle of reverse tick pulse in usec (reduced from 90)
         
-        # Reverse parameters - Region B (other seconds)
-        self.rev_tickb_t1_ms = 12       # Length of reverse tick short pulse in msecs (increased from 10)
-        self.rev_tickb_t2_ms = 10       # Length of delay before reverse tick long pulse in msecs (increased from 7)
-        self.rev_tickb_t3_ms = 30       # Length of reverse tick long pulse in msecs (increased from 28)
-        self.rev_tickb_on_us = 82       # Duty cycle of reverse tick pulse in usec (out of 100usec)
-        self.rev_count_mask = 3         # 0 = 8 ticks/sec, 1 = 4 ticks/sec, 3 = 2 ticks/sec, 7 = 1 tick/sec
-        self.rev_speedup = 2            # Speed multiplier for reverse
+        # Reverse parameters - Region B (other seconds) - optimized based on ESPClock4
+        self.rev_tickb_t1_ms = 9        # Length of reverse tick short pulse in msecs (reduced from 12)
+        self.rev_tickb_t2_ms = 5        # Length of delay before reverse tick long pulse in msecs (reduced from 10)
+        self.rev_tickb_t3_ms = 23       # Length of reverse tick long pulse in msecs (reduced from 30)
+        self.rev_tickb_on_us = 85       # Duty cycle of reverse tick pulse in usec (reduced from 82)
+        self.rev_count_mask = 1         # 0 = 8 ticks/sec, 1 = 4 ticks/sec, 3 = 2 ticks/sec, 7 = 1 tick/sec
+        self.rev_speedup = 4            # Speed multiplier for reverse (increased from 2)
         
-        # Synchronization thresholds
-        self.diff_threshold_hh = 6      # Hours threshold for fast-forward/reverse
+        # Synchronization thresholds (optimized based on ESPClock4)
+        self.diff_threshold_hh = 7      # Hours threshold for fast-forward/reverse (increased from 6)
         self.diff_threshold_mm = 0      # Minutes threshold for fast-forward/reverse
-        self.diff_threshold_ss = 30     # Seconds threshold for fast-forward/reverse
+        self.diff_threshold_ss = 2      # Seconds threshold for fast-forward/reverse (reduced from 30)
+        
+        # Drift tolerance (new feature based on ESPClock4)
+        self.drift_tolerance_ss = 30    # Allow up to 30 seconds of drift before correction
         
         # Clock state
         self.current_tick_pin = self.tick_pin1
@@ -339,8 +342,12 @@ class ClockController:
         return total_seconds_diff
     
     def should_use_fast_forward_or_reverse(self, total_seconds_diff):
-        """Threshold checking for fast-forward/reverse decisions"""
+        """Threshold checking for fast-forward/reverse decisions with drift tolerance"""
         abs_diff = abs(total_seconds_diff)
+        
+        # Apply drift tolerance - don't correct if within tolerance
+        if abs_diff <= self.drift_tolerance_ss:
+            return False
         
         # Convert to hours, minutes, seconds
         diff_hours = abs_diff // 3600
@@ -389,7 +396,10 @@ class ClockController:
         # Synchronization logic
         if not self.should_use_fast_forward_or_reverse(total_seconds_diff):
             # Within tolerance - normal ticking
-            logging.info(f"Clock is within tolerance ({self.diff_threshold_ss}s) - normal ticking")
+            if abs(total_seconds_diff) <= self.drift_tolerance_ss:
+                logging.info(f"Clock is within drift tolerance ({self.drift_tolerance_ss}s) - normal ticking")
+            else:
+                logging.info(f"Clock is within threshold tolerance ({self.diff_threshold_ss}s) - normal ticking")
             self.fast_forward = False
             self.forward_tick()
         elif total_seconds_diff > 0:
@@ -704,7 +714,8 @@ class ClockController:
                 "reverse_speedup": self.rev_speedup,
                 "diff_threshold_hh": self.diff_threshold_hh,
                 "diff_threshold_mm": self.diff_threshold_mm,
-                "diff_threshold_ss": self.diff_threshold_ss
+                "diff_threshold_ss": self.diff_threshold_ss,
+                "drift_tolerance_ss": self.drift_tolerance_ss
             }
 
         @self.app.route("/api/pulsing_config", methods=["POST"])
@@ -766,6 +777,10 @@ class ClockController:
                     self.diff_threshold_mm = int(data["diff_threshold_mm"])
                 if "diff_threshold_ss" in data:
                     self.diff_threshold_ss = int(data["diff_threshold_ss"])
+                
+                # Update drift tolerance
+                if "drift_tolerance_ss" in data:
+                    self.drift_tolerance_ss = int(data["drift_tolerance_ss"])
                 
                 return {"message": "Pulsing configuration updated successfully"}
             except Exception as e:
