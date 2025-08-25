@@ -48,15 +48,15 @@ class ClockController:
         # Reverse parameters - Region A (seconds 35-55)
         self.rev_ticka_lo = 35          # REV_TICKA_LO <= second hand < REV_TICKA_HI
         self.rev_ticka_hi = 55
-        self.rev_ticka_t1_ms = 10       # Length of reverse tick short pulse in msecs
-        self.rev_ticka_t2_ms = 7        # Length of delay before reverse tick long pulse in msecs
-        self.rev_ticka_t3_ms = 28       # Length of reverse tick long pulse in msecs
+        self.rev_ticka_t1_ms = 12       # Length of reverse tick short pulse in msecs (increased from 10)
+        self.rev_ticka_t2_ms = 10       # Length of delay before reverse tick long pulse in msecs (increased from 7)
+        self.rev_ticka_t3_ms = 30       # Length of reverse tick long pulse in msecs (increased from 28)
         self.rev_ticka_on_us = 90       # Duty cycle of reverse tick pulse in usec (out of 100usec)
         
         # Reverse parameters - Region B (other seconds)
-        self.rev_tickb_t1_ms = 10       # Length of reverse tick short pulse in msecs
-        self.rev_tickb_t2_ms = 7        # Length of delay before reverse tick long pulse in msecs
-        self.rev_tickb_t3_ms = 28       # Length of reverse tick long pulse in msecs
+        self.rev_tickb_t1_ms = 12       # Length of reverse tick short pulse in msecs (increased from 10)
+        self.rev_tickb_t2_ms = 10       # Length of delay before reverse tick long pulse in msecs (increased from 7)
+        self.rev_tickb_t3_ms = 30       # Length of reverse tick long pulse in msecs (increased from 28)
         self.rev_tickb_on_us = 82       # Duty cycle of reverse tick pulse in usec (out of 100usec)
         self.rev_count_mask = 3         # 0 = 8 ticks/sec, 1 = 4 ticks/sec, 3 = 2 ticks/sec, 7 = 1 tick/sec
         self.rev_speedup = 2            # Speed multiplier for reverse
@@ -72,6 +72,7 @@ class ClockController:
         self.paused = False
         self.reverse = False
         self.current_speed = 1          # Current speed multiplier
+        self.last_reverse_tick_time = 0  # Track last reverse tick time
         
         # Clock position
         self.clock_hour = None
@@ -256,8 +257,18 @@ class ClockController:
     
     def reverse_tick(self):
         """Reverse tick with region-specific parameters"""
+        # Ensure adequate spacing between reverse ticks
+        current_time = time.time()
+        if current_time - self.last_reverse_tick_time < 0.1:  # Minimum 100ms between reverse ticks
+            logging.debug("Reverse tick skipped - too soon after last reverse tick")
+            return
+        self.last_reverse_tick_time = current_time
+        
         self.reverse = True
         self.current_speed = self.rev_speedup
+        
+        # Add a small delay to ensure consistent timing
+        time.sleep(0.005)  # 5ms delay for timing consistency
         
         with self.clock_position_lock:
             current_second = self.clock_second
@@ -269,25 +280,37 @@ class ClockController:
             t2_duration = self.rev_ticka_t2_ms / 1000.0
             t3_duration = self.rev_ticka_t3_ms / 1000.0
             on_us = self.rev_ticka_on_us
+            region = "A"
         else:
             # Region B parameters
             t1_duration = self.rev_tickb_t1_ms / 1000.0
             t2_duration = self.rev_tickb_t2_ms / 1000.0
             t3_duration = self.rev_tickb_t3_ms / 1000.0
             on_us = self.rev_tickb_on_us
+            region = "B"
         
-        # Two-pulse reverse sequence
+        logging.debug(f"Reverse tick - Region {region}, Pin {self.current_tick_pin}, t1={t1_duration*1000:.1f}ms, t2={t2_duration*1000:.1f}ms, t3={t3_duration*1000:.1f}ms")
+        
+        # Two-pulse reverse sequence with improved timing
         # First pulse (short) - release
         self.send_pwm_pulse(self.current_tick_pin, t1_duration, on_us)
         
-        # Switch pins
-        self.current_tick_pin = self.tick_pin1 if self.current_tick_pin == self.tick_pin2 else self.tick_pin2
+        # Ensure first pulse is completely finished before switching pins
+        time.sleep(0.001)  # 1ms delay to ensure pulse completion
         
-        # Delay before second pulse
-        time.sleep(t2_duration)
+        # Switch pins
+        old_pin = self.current_tick_pin
+        self.current_tick_pin = self.tick_pin1 if self.current_tick_pin == self.tick_pin2 else self.tick_pin2
+        logging.debug(f"Reverse tick - Switched from pin {old_pin} to pin {self.current_tick_pin}")
+        
+        # Delay before second pulse (with additional small delay for pin settling)
+        time.sleep(t2_duration + 0.002)  # Add 2ms for pin settling
         
         # Second pulse (long) - engage
         self.send_pwm_pulse(self.current_tick_pin, t3_duration, on_us)
+        
+        # Ensure second pulse is completely finished before continuing
+        time.sleep(0.001)  # 1ms delay to ensure pulse completion
         
         self.update_clock_position(reverse=True)
     
@@ -361,6 +384,7 @@ class ClockController:
 
         logging.info(f"RTC time: {hour:02}:{minute:02}:{second:02}")
         logging.info(f"Clock time: {self.clock_hour:02}:{self.clock_minute:02}:{self.clock_second:02}")
+        logging.info(f"Time difference: {total_seconds_diff} seconds")
 
         # Synchronization logic
         if not self.should_use_fast_forward_or_reverse(total_seconds_diff):
