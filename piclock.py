@@ -39,34 +39,34 @@ class ClockController:
         self.norm_tick_ms = 31          # Length of forward tick pulse in msecs
         self.norm_tick_on_us = 60       # Duty cycle of forward tick pulse (out of 100us)
         
-        # Fast-forward parameters (optimized based on ESPClock4)
-        self.fwd_tick_ms = 31           # Length of fast-forward tick pulse in msecs (reduced from 32)
-        self.fwd_tick_on_us = 65        # Duty cycle of fast-forward tick pulse (increased from 60)
-        self.fwd_count_mask = 0         # 0 = 8 ticks/sec (increased from 1 = 4 ticks/sec)
-        self.fwd_speedup = 8            # Speed multiplier for fast-forward (increased from 4)
+        # Fast-forward parameters
+        self.fwd_tick_ms = 31           # Length of fast-forward tick pulse in msecs
+        self.fwd_tick_on_us = 65        # Duty cycle of fast-forward tick pulse
+        self.fwd_count_mask = 0         # 0 = 8 ticks/sec, 1 = 4 ticks/sec, 3 = 2 ticks/sec, 7 = 1 tick/sec
+        self.fwd_speedup = 8            # Speed multiplier for fast-forward
         
-        # Reverse parameters - Region A (seconds 35-55) - optimized based on ESPClock4
+        # Reverse parameters - Region A (seconds 35-55)
         self.rev_ticka_lo = 35          # REV_TICKA_LO <= second hand < REV_TICKA_HI
         self.rev_ticka_hi = 55
-        self.rev_ticka_t1_ms = 9        # Length of reverse tick short pulse in msecs (reduced from 12)
-        self.rev_ticka_t2_ms = 5        # Length of delay before reverse tick long pulse in msecs (reduced from 10)
-        self.rev_ticka_t3_ms = 23       # Length of reverse tick long pulse in msecs (reduced from 30)
-        self.rev_ticka_on_us = 85       # Duty cycle of reverse tick pulse in usec (reduced from 90)
+        self.rev_ticka_t1_ms = 9        # Length of reverse tick short pulse in msecs
+        self.rev_ticka_t2_ms = 5        # Length of delay before reverse tick long pulse in msecs
+        self.rev_ticka_t3_ms = 23       # Length of reverse tick long pulse in msecs
+        self.rev_ticka_on_us = 85       # Duty cycle of reverse tick pulse in usec
         
-        # Reverse parameters - Region B (other seconds) - optimized based on ESPClock4
-        self.rev_tickb_t1_ms = 9        # Length of reverse tick short pulse in msecs (reduced from 12)
-        self.rev_tickb_t2_ms = 5        # Length of delay before reverse tick long pulse in msecs (reduced from 10)
-        self.rev_tickb_t3_ms = 23       # Length of reverse tick long pulse in msecs (reduced from 30)
-        self.rev_tickb_on_us = 85       # Duty cycle of reverse tick pulse in usec (reduced from 82)
+        # Reverse parameters - Region B (other seconds)
+        self.rev_tickb_t1_ms = 9        # Length of reverse tick short pulse in msecs
+        self.rev_tickb_t2_ms = 5        # Length of delay before reverse tick long pulse in msecs
+        self.rev_tickb_t3_ms = 23       # Length of reverse tick long pulse in msecs
+        self.rev_tickb_on_us = 85       # Duty cycle of reverse tick pulse in usec
         self.rev_count_mask = 1         # 0 = 8 ticks/sec, 1 = 4 ticks/sec, 3 = 2 ticks/sec, 7 = 1 tick/sec
-        self.rev_speedup = 4            # Speed multiplier for reverse (increased from 2)
+        self.rev_speedup = 4            # Speed multiplier for reverse
         
-        # Synchronization thresholds (optimized based on ESPClock4)
-        self.diff_threshold_hh = 7      # Hours threshold for fast-forward/reverse (increased from 6)
+        # Synchronization thresholds
+        self.diff_threshold_hh = 7      # Hours threshold for fast-forward/reverse
         self.diff_threshold_mm = 0      # Minutes threshold for fast-forward/reverse
-        self.diff_threshold_ss = 2      # Seconds threshold for fast-forward/reverse (reduced from 30)
+        self.diff_threshold_ss = 2      # Seconds threshold for fast-forward/reverse
         
-        # Drift tolerance (new feature based on ESPClock4)
+        # Drift tolerance
         self.drift_tolerance_ss = 30    # Allow up to 30 seconds of drift before correction
         
         # Clock state
