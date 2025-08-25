@@ -5,6 +5,7 @@ A robust Python application that drives an analog clock mechanism using a Raspbe
 ## Features
 
 - **Accurate Timekeeping**: NTP synchronization with configurable servers
+- **Advanced Pulsing**: Region-specific reverse logic and precise pulse control
 - **Hardware Control**: GPIO-based clock mechanism control (forward, reverse, fast-forward)
 - **Web Interface**: Flask-based dashboard for remote monitoring and control
 - **Production Ready**: Proper logging, security hardening, error handling
@@ -65,6 +66,40 @@ self.flask_host = "0.0.0.0"
 self.flask_port = 5000
 ```
 
+## Advanced Pulsing Configuration
+
+The application includes sophisticated pulsing logic for optimal clock control:
+
+### Normal Ticking Parameters
+- `norm_tick_ms`: Length of forward tick pulse (31ms default)
+- `norm_tick_on_us`: Duty cycle of forward tick pulse (60μs out of 100μs)
+
+### Fast-Forward Parameters
+- `fwd_tick_ms`: Length of fast-forward tick pulse (32ms default)
+- `fwd_tick_on_us`: Duty cycle of fast-forward tick pulse (60μs)
+- `fwd_count_mask`: Speed control (1 = 4 ticks/sec default)
+- `fwd_speedup`: Speed multiplier (4x default)
+
+### Reverse Parameters (Region-Specific)
+**Region A (seconds 35-55):**
+- `rev_ticka_t1_ms`: Short pulse length (10ms)
+- `rev_ticka_t2_ms`: Delay before long pulse (7ms)
+- `rev_ticka_t3_ms`: Long pulse length (28ms)
+- `rev_ticka_on_us`: Duty cycle (90μs)
+
+**Region B (other seconds):**
+- `rev_tickb_t1_ms`: Short pulse length (10ms)
+- `rev_tickb_t2_ms`: Delay before long pulse (7ms)
+- `rev_tickb_t3_ms`: Long pulse length (28ms)
+- `rev_tickb_on_us`: Duty cycle (82μs)
+
+### Synchronization Thresholds
+- `diff_threshold_ss`: Seconds tolerance (30s default)
+- `diff_threshold_mm`: Minutes threshold (0 default)
+- `diff_threshold_hh`: Hours threshold (6 default)
+
+These parameters can be configured via the API or by editing the values in `piclock.py`.
+
 ## Usage
 
 ### Web Interface
@@ -83,6 +118,8 @@ Access the web interface at `http://your-pi-ip:5000`
 - `GET /api/clock_status` - Get clock operation status
 - `POST /api/pause_clock` - Pause clock
 - `POST /api/resume_clock` - Resume clock
+- `GET /api/pulsing_config` - Get pulsing configuration
+- `POST /api/pulsing_config` - Update pulsing configuration
 
 ### Running the Application
 

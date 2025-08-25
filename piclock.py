@@ -34,11 +34,44 @@ class ClockController:
         self.flask_host = "0.0.0.0"
         self.flask_port = 5000
         
+        # Advanced Pulsing Configuration
+        # Normal ticking parameters
+        self.norm_tick_ms = 31          # Length of forward tick pulse in msecs
+        self.norm_tick_on_us = 60       # Duty cycle of forward tick pulse (out of 100us)
+        
+        # Fast-forward parameters
+        self.fwd_tick_ms = 32           # Length of fast-forward tick pulse in msecs
+        self.fwd_tick_on_us = 60        # Duty cycle of fast-forward tick pulse
+        self.fwd_count_mask = 1         # 0 = 8 ticks/sec, 1 = 4 ticks/sec, 3 = 2 ticks/sec, 7 = 1 tick/sec
+        self.fwd_speedup = 4            # Speed multiplier for fast-forward
+        
+        # Reverse parameters - Region A (seconds 35-55)
+        self.rev_ticka_lo = 35          # REV_TICKA_LO <= second hand < REV_TICKA_HI
+        self.rev_ticka_hi = 55
+        self.rev_ticka_t1_ms = 10       # Length of reverse tick short pulse in msecs
+        self.rev_ticka_t2_ms = 7        # Length of delay before reverse tick long pulse in msecs
+        self.rev_ticka_t3_ms = 28       # Length of reverse tick long pulse in msecs
+        self.rev_ticka_on_us = 90       # Duty cycle of reverse tick pulse in usec (out of 100usec)
+        
+        # Reverse parameters - Region B (other seconds)
+        self.rev_tickb_t1_ms = 10       # Length of reverse tick short pulse in msecs
+        self.rev_tickb_t2_ms = 7        # Length of delay before reverse tick long pulse in msecs
+        self.rev_tickb_t3_ms = 28       # Length of reverse tick long pulse in msecs
+        self.rev_tickb_on_us = 82       # Duty cycle of reverse tick pulse in usec (out of 100usec)
+        self.rev_count_mask = 3         # 0 = 8 ticks/sec, 1 = 4 ticks/sec, 3 = 2 ticks/sec, 7 = 1 tick/sec
+        self.rev_speedup = 2            # Speed multiplier for reverse
+        
+        # Synchronization thresholds
+        self.diff_threshold_hh = 6      # Hours threshold for fast-forward/reverse
+        self.diff_threshold_mm = 0      # Minutes threshold for fast-forward/reverse
+        self.diff_threshold_ss = 30     # Seconds threshold for fast-forward/reverse
+        
         # Clock state
         self.current_tick_pin = self.tick_pin1
         self.fast_forward = False
         self.paused = False
         self.reverse = False
+        self.current_speed = 1          # Current speed multiplier
         
         # Clock position
         self.clock_hour = None
@@ -181,17 +214,81 @@ class ClockController:
         except Exception as e:
             logging.error(f"GPIO operation failed for pin {pin}: {e}")
     
+    def send_pwm_pulse(self, pin, total_duration, on_duration_us):
+        """Send a pulse with precise timing control"""
+        if not self.hardware_available:
+            logging.error(f"Cannot send pulse - hardware not available")
+            return
+            
+        try:
+            GPIO.output(pin, GPIO.HIGH)
+            time.sleep(total_duration)
+            GPIO.output(pin, GPIO.LOW)
+                
+        except Exception as e:
+            logging.error(f"Pulse operation failed for pin {pin}: {e}")
+    
     def forward_tick(self):
+        """Normal forward tick"""
         self.reverse = False
-        self.send_pulse(self.current_tick_pin, 0.1)
+        self.current_speed = 1
+        
+        # Use normal tick parameters
+        duration = self.norm_tick_ms / 1000.0
+        self.send_pwm_pulse(self.current_tick_pin, duration, self.norm_tick_on_us)
+        
+        # Switch pins
+        self.current_tick_pin = self.tick_pin2 if self.current_tick_pin == self.tick_pin1 else self.tick_pin1
+        self.update_clock_position()
+    
+    def fast_forward_tick(self):
+        """Fast-forward tick"""
+        self.reverse = False
+        self.current_speed = self.fwd_speedup
+        
+        # Use fast-forward tick parameters
+        duration = self.fwd_tick_ms / 1000.0
+        self.send_pwm_pulse(self.current_tick_pin, duration, self.fwd_tick_on_us)
+        
+        # Switch pins
         self.current_tick_pin = self.tick_pin2 if self.current_tick_pin == self.tick_pin1 else self.tick_pin1
         self.update_clock_position()
     
     def reverse_tick(self):
+        """Reverse tick with region-specific parameters"""
         self.reverse = True
-        self.send_pulse(self.current_tick_pin, 0.01)
+        self.current_speed = self.rev_speedup
+        
+        with self.clock_position_lock:
+            current_second = self.clock_second
+        
+        # Determine which region we're in for reverse parameters
+        if self.rev_ticka_lo <= current_second < self.rev_ticka_hi:
+            # Region A parameters
+            t1_duration = self.rev_ticka_t1_ms / 1000.0
+            t2_duration = self.rev_ticka_t2_ms / 1000.0
+            t3_duration = self.rev_ticka_t3_ms / 1000.0
+            on_us = self.rev_ticka_on_us
+        else:
+            # Region B parameters
+            t1_duration = self.rev_tickb_t1_ms / 1000.0
+            t2_duration = self.rev_tickb_t2_ms / 1000.0
+            t3_duration = self.rev_tickb_t3_ms / 1000.0
+            on_us = self.rev_tickb_on_us
+        
+        # Two-pulse reverse sequence
+        # First pulse (short) - release
+        self.send_pwm_pulse(self.current_tick_pin, t1_duration, on_us)
+        
+        # Switch pins
         self.current_tick_pin = self.tick_pin1 if self.current_tick_pin == self.tick_pin2 else self.tick_pin2
-        self.send_pulse(self.current_tick_pin, 0.03)
+        
+        # Delay before second pulse
+        time.sleep(t2_duration)
+        
+        # Second pulse (long) - engage
+        self.send_pwm_pulse(self.current_tick_pin, t3_duration, on_us)
+        
         self.update_clock_position(reverse=True)
     
     def calculate_time_difference(self, ntp_hour, ntp_minute, ntp_second):
@@ -217,6 +314,23 @@ class ClockController:
             total_seconds_diff += 43200
 
         return total_seconds_diff
+    
+    def should_use_fast_forward_or_reverse(self, total_seconds_diff):
+        """Threshold checking for fast-forward/reverse decisions"""
+        abs_diff = abs(total_seconds_diff)
+        
+        # Convert to hours, minutes, seconds
+        diff_hours = abs_diff // 3600
+        diff_minutes = (abs_diff % 3600) // 60
+        diff_seconds = abs_diff % 60
+        
+        # Check if difference exceeds thresholds
+        if (diff_hours > self.diff_threshold_hh or 
+            diff_minutes > self.diff_threshold_mm or 
+            diff_seconds > self.diff_threshold_ss):
+            return True
+        
+        return False
     
     def update_clock_position(self, reverse=False):
         with self.clock_position_lock:
@@ -248,24 +362,51 @@ class ClockController:
         logging.info(f"RTC time: {hour:02}:{minute:02}:{second:02}")
         logging.info(f"Clock time: {self.clock_hour:02}:{self.clock_minute:02}:{self.clock_second:02}")
 
-        tolerance = 1
-
-        if abs(total_seconds_diff) <= tolerance:
-            logging.info("Clock is in sync with RTC time")
+        # Synchronization logic
+        if not self.should_use_fast_forward_or_reverse(total_seconds_diff):
+            # Within tolerance - normal ticking
+            logging.info(f"Clock is within tolerance ({self.diff_threshold_ss}s) - normal ticking")
             self.fast_forward = False
             self.forward_tick()
-        elif total_seconds_diff > tolerance:
-            logging.info(f"Clock is behind RTC time by {total_seconds_diff} seconds")
+        elif total_seconds_diff > 0:
+            # Clock is behind - fast forward
+            logging.info(f"Clock is behind RTC time by {total_seconds_diff} seconds - fast forwarding")
             self.fast_forward = True
-            self.forward_tick()
+            self.fast_forward_tick()
         else:
-            logging.info(f"Clock is ahead of RTC time by {abs(total_seconds_diff)} seconds")
+            # Clock is ahead - reverse
+            logging.info(f"Clock is ahead of RTC time by {abs(total_seconds_diff)} seconds - reversing")
             self.fast_forward = False
             self.reverse_tick()
     
     def timer_callback(self, tick_event):
         while not self.shutdown_event.is_set():
-            time.sleep(0.25 if self.fast_forward else 1)
+            # Speed-based timing
+            if self.fast_forward:
+                # Fast-forward timing based on fwd_count_mask
+                if self.fwd_count_mask == 0:
+                    interval = 0.125  # 8 ticks/sec
+                elif self.fwd_count_mask == 1:
+                    interval = 0.25   # 4 ticks/sec
+                elif self.fwd_count_mask == 3:
+                    interval = 0.5    # 2 ticks/sec
+                else:  # fwd_count_mask == 7
+                    interval = 1.0    # 1 tick/sec
+            elif self.reverse:
+                # Reverse timing based on rev_count_mask
+                if self.rev_count_mask == 0:
+                    interval = 0.125  # 8 ticks/sec
+                elif self.rev_count_mask == 1:
+                    interval = 0.25   # 4 ticks/sec
+                elif self.rev_count_mask == 3:
+                    interval = 0.5    # 2 ticks/sec
+                else:  # rev_count_mask == 7
+                    interval = 1.0    # 1 tick/sec
+            else:
+                # Normal ticking - 1 second intervals
+                interval = 1.0
+            
+            time.sleep(interval)
             if self.shutdown_event.is_set():
                 break
             with self.lock:
@@ -512,6 +653,100 @@ class ClockController:
             else:
                 status = "Ticking"
             return {"status": status}
+
+
+
+        @self.app.route("/api/pulsing_config", methods=["GET"])
+        def get_pulsing_config():
+            """Get current pulsing configuration"""
+            return {
+                "normal_tick_ms": self.norm_tick_ms,
+                "normal_tick_on_us": self.norm_tick_on_us,
+                "fast_forward_tick_ms": self.fwd_tick_ms,
+                "fast_forward_tick_on_us": self.fwd_tick_on_us,
+                "fast_forward_count_mask": self.fwd_count_mask,
+                "fast_forward_speedup": self.fwd_speedup,
+                "reverse_region_a_lo": self.rev_ticka_lo,
+                "reverse_region_a_hi": self.rev_ticka_hi,
+                "reverse_region_a_t1_ms": self.rev_ticka_t1_ms,
+                "reverse_region_a_t2_ms": self.rev_ticka_t2_ms,
+                "reverse_region_a_t3_ms": self.rev_ticka_t3_ms,
+                "reverse_region_a_on_us": self.rev_ticka_on_us,
+                "reverse_region_b_t1_ms": self.rev_tickb_t1_ms,
+                "reverse_region_b_t2_ms": self.rev_tickb_t2_ms,
+                "reverse_region_b_t3_ms": self.rev_tickb_t3_ms,
+                "reverse_region_b_on_us": self.rev_tickb_on_us,
+                "reverse_count_mask": self.rev_count_mask,
+                "reverse_speedup": self.rev_speedup,
+                "diff_threshold_hh": self.diff_threshold_hh,
+                "diff_threshold_mm": self.diff_threshold_mm,
+                "diff_threshold_ss": self.diff_threshold_ss
+            }
+
+        @self.app.route("/api/pulsing_config", methods=["POST"])
+        def set_pulsing_config():
+            """Update pulsing configuration"""
+            try:
+                data = request.get_json()
+                if not data:
+                    return {"error": "Invalid JSON"}, 400
+                
+                # Update normal tick parameters
+                if "normal_tick_ms" in data:
+                    self.norm_tick_ms = int(data["normal_tick_ms"])
+                if "normal_tick_on_us" in data:
+                    self.norm_tick_on_us = int(data["normal_tick_on_us"])
+                
+                # Update fast-forward parameters
+                if "fast_forward_tick_ms" in data:
+                    self.fwd_tick_ms = int(data["fast_forward_tick_ms"])
+                if "fast_forward_tick_on_us" in data:
+                    self.fwd_tick_on_us = int(data["fast_forward_tick_on_us"])
+                if "fast_forward_count_mask" in data:
+                    self.fwd_count_mask = int(data["fast_forward_count_mask"])
+                if "fast_forward_speedup" in data:
+                    self.fwd_speedup = int(data["fast_forward_speedup"])
+                
+                # Update reverse region A parameters
+                if "reverse_region_a_lo" in data:
+                    self.rev_ticka_lo = int(data["reverse_region_a_lo"])
+                if "reverse_region_a_hi" in data:
+                    self.rev_ticka_hi = int(data["reverse_region_a_hi"])
+                if "reverse_region_a_t1_ms" in data:
+                    self.rev_ticka_t1_ms = int(data["reverse_region_a_t1_ms"])
+                if "reverse_region_a_t2_ms" in data:
+                    self.rev_ticka_t2_ms = int(data["reverse_region_a_t2_ms"])
+                if "reverse_region_a_t3_ms" in data:
+                    self.rev_ticka_t3_ms = int(data["reverse_region_a_t3_ms"])
+                if "reverse_region_a_on_us" in data:
+                    self.rev_ticka_on_us = int(data["reverse_region_a_on_us"])
+                
+                # Update reverse region B parameters
+                if "reverse_region_b_t1_ms" in data:
+                    self.rev_tickb_t1_ms = int(data["reverse_region_b_t1_ms"])
+                if "reverse_region_b_t2_ms" in data:
+                    self.rev_tickb_t2_ms = int(data["reverse_region_b_t2_ms"])
+                if "reverse_region_b_t3_ms" in data:
+                    self.rev_tickb_t3_ms = int(data["reverse_region_b_t3_ms"])
+                if "reverse_region_b_on_us" in data:
+                    self.rev_tickb_on_us = int(data["reverse_region_b_on_us"])
+                if "reverse_count_mask" in data:
+                    self.rev_count_mask = int(data["reverse_count_mask"])
+                if "reverse_speedup" in data:
+                    self.rev_speedup = int(data["reverse_speedup"])
+                
+                # Update synchronization thresholds
+                if "diff_threshold_hh" in data:
+                    self.diff_threshold_hh = int(data["diff_threshold_hh"])
+                if "diff_threshold_mm" in data:
+                    self.diff_threshold_mm = int(data["diff_threshold_mm"])
+                if "diff_threshold_ss" in data:
+                    self.diff_threshold_ss = int(data["diff_threshold_ss"])
+                
+                return {"message": "Pulsing configuration updated successfully"}
+            except Exception as e:
+                logging.error(f"Error in set_pulsing_config: {e}")
+                return {"error": "Internal server error"}, 500
     
     def run(self):
         tick_event = threading.Event()
@@ -551,8 +786,10 @@ class ClockController:
                     break
                 with self.lock:
                     tick_event.clear()
-                    self.synchronize_clock()
-                    self.write_time_to_fram()
+                    # Only synchronize clock if not paused
+                    if not self.paused:
+                        self.synchronize_clock()
+                        self.write_time_to_fram()
         except (KeyboardInterrupt, SystemExit):
             self._signal_handler(None, None)
 
