@@ -39,6 +39,61 @@ pip3 install -r requirements.txt
 
 # Run the application
 python3 piclock.py
+
+## Service Installation
+
+To run PiClock as a systemd service (recommended for production):
+
+```bash
+# Navigate to your PiClock directory
+cd /path/to/your/piclock
+
+# Install as a service (requires sudo)
+sudo ./install_service.sh
+
+# Start the service
+sudo systemctl start piclock
+
+# Check service status
+sudo systemctl status piclock
+
+# View logs
+sudo journalctl -u piclock -f
+```
+
+**Note**: The installation script automatically detects your current directory and user, so you can install PiClock from any location on your system.
+
+### Service Management
+
+```bash
+# Start the service
+sudo systemctl start piclock
+
+# Stop the service
+sudo systemctl stop piclock
+
+# Restart the service
+sudo systemctl restart piclock
+
+# Enable auto-start on boot
+sudo systemctl enable piclock
+
+# Disable auto-start on boot
+sudo systemctl disable piclock
+
+# View real-time logs
+sudo journalctl -u piclock -f
+
+# View recent logs
+sudo journalctl -u piclock --since "1 hour ago"
+```
+
+### Uninstall Service
+
+```bash
+# Remove the service
+sudo ./uninstall_service.sh
+```
 ```
 
 ## Configuration

@@ -67,7 +67,7 @@ class ClockController:
         self.diff_threshold_ss = 2      # Seconds threshold for fast-forward/reverse
         
         # Drift tolerance
-        self.drift_tolerance_ss = 30    # Allow up to 30 seconds of drift before correction
+        self.drift_tolerance_ss = 2    # Allow up to 2 seconds of drift before correction
         
         # Clock state
         self.current_tick_pin = self.tick_pin1

@@ -1,0 +1,32 @@
+[Unit]
+Description=PiClock - Raspberry Pi Analog Clock Controller
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/path/to/piclock
+ExecStart=/usr/bin/python3 /path/to/piclock/piclock.py
+# Alternative for virtual environment:
+# ExecStart=/path/to/piclock/.venv/bin/python /path/to/piclock/piclock.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# GPIO access requires root or gpio group membership
+SupplementaryGroups=gpio
+
+# Environment variables
+Environment=PYTHONUNBUFFERED=1
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/path/to/piclock
+
+[Install]
+WantedBy=multi-user.target
